@@ -66,7 +66,7 @@ async def anti_snipe(message):
     waifu = self.mudae_wrap.waifu_from(message)
 
     # IF The waifu exist AND its a roll AND it's unclaimed THEN GO ON
-    if waifu and waifu.type == Mudae.Waifu.Type.roll and not waifu.is_claimed:
+    if waifu and waifu.type == mudae_wrap.Waifu.Type.roll and not waifu.is_claimed:
 
         # Fills the suitor (members who wished the waifu) attribute
         await waifu.fetch_extra()
