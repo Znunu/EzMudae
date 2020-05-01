@@ -43,7 +43,7 @@ class Mudae:
         """
         Parameters
         ----------
-        bot: discord.User
+        mudae: discord.User
             The mudea bot that this object belongs to.
             This is usually the mudamaid if you got one, and if not, the classic mudae bot.
         user: discord.Client
@@ -141,8 +141,8 @@ class Mudae:
             info = 1
 
         # Should not be called directly
-        def __init__(self, bot, user, message):
-            self.bot = bot
+        def __init__(self, mudae, user, message):
+            self.mudae = mudae
             self.message = message
             self.user = user
             self.suitors = []
@@ -268,6 +268,20 @@ class Mudae:
                         self.creator = message.author
                         break
 
+            # await asyncio.sleep(1)
+            # UNTESTED ------------------->
+            """
+            self.message = await self.message.channel.fetch_message(self.message_id)
+            if self.is_claimed and self.is_roll:
+                for react in self.message.reactions:
+                    name = react.emoji.name
+                    if "kakera" in name:
+                        name = name.replace("kakera", "")
+                        if name == "":
+                            name = "K"
+                        self.ka_react = name
+                        break
+            """
 
         async def await_claim(self):
             """
@@ -321,7 +335,7 @@ class Mudae:
         """
 
         try:
-            return self.Waifu(self.bot, self.user, message)
+            return self.Waifu(self.mudae, self.user, message)
         except TypeError:
             return None
 
