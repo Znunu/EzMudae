@@ -15,7 +15,7 @@ class Mudae:
 
     Attributes
     ----------
-    bot: discord.User
+    mudae: discord.User
         The mudea bot that this object belongs to.
         This is usually the mudamaid if you got one, and if not, the classic mudae bot.
     user: discord.Client
