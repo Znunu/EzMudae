@@ -180,6 +180,7 @@ class Mudae:
                 self.series = match.group(1).replace("\n", " ")
                 self.kakera = int(match.group(2))
                 self.type = self.Type.roll
+                self.is_roll = True
 
             # Try to match to infos:
             match = re.search(r"""^(.*)                #From the start of the string, series captured
@@ -204,6 +205,7 @@ class Mudae:
                 self.claims = int(match.group(5))
                 self.likes = int(match.group(6))
                 self.type = self.Type.info
+                self.is_roll = False
 
             # Did it match?
             if not self.series:
