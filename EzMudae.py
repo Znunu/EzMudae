@@ -467,8 +467,8 @@ class Mudae:
         else:
             mult = 60
         times = []
-        times[0] = roll_mod * mult
-        times[1] = claim_mod * mult
-        times[2] = (int(time.time()) + roll_rem * mult) % roll_mod
-        times[3] = (int(time.time()) + claim_rem * mult) % claim_mod
+        times.append(roll_mod * mult)
+        times.append(claim_mod * mult)
+        times.append((int(time.time()) + roll_rem * mult) % roll_mod)
+        times.append((int(time.time()) + claim_rem * mult) % claim_mod)
         return times
