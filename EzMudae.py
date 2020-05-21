@@ -462,13 +462,14 @@ class Mudae:
             A list of integers that can be supplied to the constructor of this class.
         """
 
-        if in_seconds:
-            mult = 1
-        else:
-            mult = 60
         times = []
-        times.append(roll_mod * mult)
-        times.append(claim_mod * mult)
-        times.append((int(time.time()) + roll_rem * mult) % roll_mod)
-        times.append((int(time.time()) + claim_rem * mult) % claim_mod)
+        if not in_seconds:
+            roll_mod = roll_mod * 60
+            claim_mod = claim_mod * 60
+            roll_rem = roll_rem * 60
+            claim_rem = claim_rem * 60
+        times.append(roll_mod)
+        times.append(claim_mod)
+        times.append((int(time.time()) + roll_rem) % roll_mod)
+        times.append((int(time.time()) + claim_rem) % claim_mod)
         return times
