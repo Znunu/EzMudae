@@ -160,7 +160,7 @@ class Mudae:
             self.image_extra = None
             self.type = None
             # self.ka_react = None
-            # self.is_claimed, self.is_girl and self.is_roll won't be initialized to avoid them being accidentialy inteprated as False
+            # self.is_claimed, self.is_girl and self.is_roll won't be initialized to avoid them being accidentialy interpreted as False
 
             # Message is missing parts to match against and can't be a match
             if message.author != self.mudae or not len(message.embeds) == 1 or message.embeds[0].image.url == message.embeds[0].Empty:
