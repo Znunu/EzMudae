@@ -102,3 +102,19 @@ async def on_message(message)
                 await message.channel.send(f"{owner.mention} don't forget to treat {waifu.name} well!")
 
 ```
+
+### Claim waifu in wishlist
+```Python
+mudae_wrap #A Mudae object
+
+async def on_message(message)
+      
+      # My wishes
+      wishlist = ("saber", "suzuha", "hatsune miku")
+      
+      # Check if the waifu is in a wishlist
+      waifu = mudae_wrap.from_wish(message, wishlist)
+      
+      # If it is, claim it
+      if (waifu):
+            await waifu.add_reaction("❤️")
