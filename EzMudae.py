@@ -341,7 +341,7 @@ class Mudae:
         except TypeError:
             return None
 
-    def is_wish(self, message, wishes, check_name=True, check_series=False):
+    def from_wish(self, message, wishes, check_name=True, check_series=False):
         """
         Checks if the waifu from a waifu message is part of a list of wishes.
 
@@ -365,13 +365,13 @@ class Mudae:
             Whether the waifu was wished.
         """
         waifu = self.waifu(message)
-        wishes = wishes.map(lambda wish: wish.lower())
+        wishes = map(lambda wish: wish.lower(), wishes)
         if not waifu:
-            return False
+            return None
         if check_name and waifu.name.lower() in wishes:
-            return True
+            return waifu
         if check_series and waifu.series.lower() in wishes:
-            return True
+            return waifu
         return False
 
     def until_roll(self, in_seconds=False):
