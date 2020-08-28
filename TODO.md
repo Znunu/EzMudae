@@ -1,3 +1,4 @@
+- [ ] Add type hints
 - [ ] Make `get_timing` return a single int, instead of four
 - [ ] Add a `on_waifu` decorator
 - [ ] Make `is_wish` return Waifu or None instead of True or False
