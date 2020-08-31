@@ -3,7 +3,7 @@ import asyncio
 import time
 import re
 import sys
-import classes.pvars as pvars
+import pvars
 
 pvars = pvars.get_context(file_format=pvars.Format.JSON)
 timing_data = pvars.make_var(None, lambda: timing_data)
