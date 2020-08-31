@@ -1,26 +1,26 @@
-
 import enum
 import asyncio
 import time
 import re
+import sys
+import classes.pvars as pvars
+
+pvars = pvars.get_context(file_format=pvars.Format.JSON)
+timing_data = pvars.make_var(None, lambda: timing_data)
 
 
 class Mudae:
     """
     Represents a mudae bot. Primarily used as a factory for Waifu objects.
-
     Before doing anything with this class, make sure you've configured your mudae bot properly.
     Kakera value must be visible on rolls, for this class to be able to read the messages from mudae.
-    If you want to check for claim or roll resets, a special timing list must be supplied.
-
-    Attributes
+    If you want to check for claim or roll resets, you must have used the set_timing method at least once
     ----------
     mudae: discord.User
         The mudea bot that this object belongs to.
         This is usually the mudamaid if you got one, and if not, the classic mudae bot.
     user: discord.Client
         The client that's using this class.
-
     Methods
     -------
     waifu_from(message)
@@ -35,11 +35,11 @@ class Mudae:
          Pauses until next roll reset.
     async wait_claim()
          Pauses until next claim reset.
-    static get_timing(roll_mod, claim_mod, roll_rem, claim_rem, in_seconds)
-        Static method that returns a timing list from the supplied parameters.
+    static set_timing(roll_mod, claim_mod, roll_rem, claim_rem, in_seconds)
+        Static method that configures roll resets
     """
 
-    def __init__(self, user, mudae, timing=None):
+    def __init__(self, user, mudae):
         """
         Parameters
         ----------
@@ -48,32 +48,30 @@ class Mudae:
             This is usually the mudamaid if you got one, and if not, the classic mudae bot.
         user: discord.Client
             The client that's using this class.
-        timing: list[int]
-            A timing list that should only be created by calling the static get_timing function on this class.
         """
-        
+
         self.mudae = mudae
         self.user = user
 
-        if timing:
-            self._roll_mod = timing[0]
-            self._claim_mod = timing[1]
-            self._roll_rem = timing[2]
-            self._claim_rem = timing[3]
-            self._timing = timing
+        if timing_data:
+            self._roll_mod = timing_data[0]
+            self._claim_mod = timing_data[1]
+            self._roll_rem = timing_data[2]
+            self._claim_rem = timing_data[3]
+            self._timing = timing_data
             self._has_timing = True
         else:
             self._has_timing = False
+            sys.stderr.write("Timing has not been set\n")
 
     class Waifu:
         """
         Represents a waifu from mudae.
-        
+
         A lot of the attributes will often be null since they either:
             a. Are not applicable
             b. Can't be read from the waifu message
             c. Need to be fetched with the methods
-
         Attributes
         ----------
         mudae: discord.User
@@ -116,7 +114,6 @@ class Mudae:
             If the waifu is a roll.
         is_girl: bool
             If the waifu is female or both female and male.
-
         Methods
         -------
         async fetch_extra()
@@ -128,7 +125,6 @@ class Mudae:
         class Type(enum.Enum):
             """
             Represents the different types of waifus.
-
             Enums
             -----
             roll: 0
@@ -137,8 +133,8 @@ class Mudae:
                 The waifu came from the info command e.g. created with $im.
             """
 
-            roll = 0
-            info = 1
+            roll = enum.auto()
+            info = enum.auto()
 
         # Should not be called directly
         def __init__(self, mudae, user, message):
@@ -160,7 +156,7 @@ class Mudae:
             self.image_extra = None
             self.type = None
             # self.ka_react = None
-            # self.is_claimed, self.is_girl and self.is_roll won't be initialized to avoid them being accidentialy interpreted as False
+            # self.is_claimed, self.is_girl and self.is_roll won't be initialized to avoid them being accidentally interpreted as False
 
             # Message is missing parts to match against and can't be a match
             if message.author != self.mudae or not len(message.embeds) == 1 or message.embeds[0].image.url == message.embeds[0].Empty:
@@ -244,7 +240,6 @@ class Mudae:
         async def fetch_extra(self):
             """
             Fills the suitor and creator attributes.
-
             The suitor and creator attributes are by default empty and null respectively. To get the real values, this method must be called.
             The method will only work for waifus of type roll and only if the waifu was just rolled.
             """
@@ -261,7 +256,6 @@ class Mudae:
                         break
                     elif "wished" in message.content.lower():
                         self.suitors = message.mentions
-                        print("Found suitors")
                 elif state == 5:
                     break
                 else:
@@ -288,11 +282,9 @@ class Mudae:
         async def await_claim(self):
             """
             Waits for a member to claim this waifu, then returns with that member.
-
             If the waifu has already been claimed, the owner is returned immediately.
             If the waifu doesn't have an owner, the function will wait for up to 60s for someone to claim.
             Returns none if after 60s no one has claimed.
-
             Returns
             -------
             Mudae.Waifu
@@ -305,7 +297,8 @@ class Mudae:
                 return self.owner
 
             def check(message):
-                return (message.author == self.mudae) and self.name in message.content and "are now married" in message.content.lower()
+                return message.author == self.mudae and self.name in message.content and "are now married" in message.content.lower()
+
             try:
                 message = await self.user.wait_for("message", timeout=60, check=check)
                 user_name = message.content.split("**")[1]
@@ -319,15 +312,12 @@ class Mudae:
     def waifu_from(self, message):
         """
         Returns a waifu from a message.
-
         Currently two types of messages are supported, rolls and infoes. Rolls are usually created with the $w command, and infoes with the $im command.
         If the message supplied is none of the two valid types of messages, or is not valid for another reason, none is returned.
-
         Parameters
         ----------
         message: discord.Message
             A discord message from mudae with a waifu (a waifu message).
-
         Returns
         -------
         Mudae.Waifu
@@ -344,10 +334,8 @@ class Mudae:
     def from_wish(self, message, wishes, check_name=True, check_series=False):
         """
         Checks if the waifu from a waifu message is part of a list of wishes.
-
         If both check_name and check_series are true, the wishes will be checked against both name and series.
         If both are false, the function will always return false.
-
         Parameters
         ----------
         message: discord.Message
@@ -358,13 +346,12 @@ class Mudae:
             Whether the wishes are wishes for specific waifus.
         check_series: bool
             Whether the wishes are wishes for specific series.
-
         Returns
         -------
         bool
             Whether the waifu was wished.
         """
-        waifu = self.waifu(message)
+        waifu = self.waifu_from(message)
         wishes = map(lambda wish: wish.lower(), wishes)
         if not waifu:
             return None
@@ -377,12 +364,10 @@ class Mudae:
     def until_roll(self, in_seconds=False):
         """
         Returns how much time there's left until the next roll reset.
-
         Parameters
         ----------
         in_seconds: bool
             Whether the time returned should be in seconds or minutes.
-
         Returns
         -------
         int
@@ -401,12 +386,10 @@ class Mudae:
     def until_claim(self, in_seconds=False):
         """
         Returns how much time there's left until the next claim reset.
-
         Parameters
         ----------
         in_seconds: bool
             Whether the time returned should be in seconds or minutes.
-
         Returns
         -------
         int
@@ -439,10 +422,9 @@ class Mudae:
         await asyncio.sleep(self.until_claim(True))
 
     @staticmethod
-    def get_timing(roll_mod, claim_mod, roll_rem, claim_rem, in_seconds=False):
+    def set_timing(roll_mod, claim_mod, roll_rem, claim_rem, in_seconds=False):
         """
-        A static method that returns a timing list from the supplied parameters.
-
+        A static method that persistently sets timing for roll resets for the class
         Parameters
         ----------
         roll_mod: int
@@ -455,21 +437,16 @@ class Mudae:
             The time period, from now until the next claim reset.
         in_seconds: bool
             If the time periods are given as seconds or minutes.
-
-        Returns
-        -------
-        list[int]
-            A list of integers that can be supplied to the constructor of this class.
         """
 
-        times = []
+        global timing_data
+        timing_data = []
         if not in_seconds:
-            roll_mod = roll_mod * 60
-            claim_mod = claim_mod * 60
-            roll_rem = roll_rem * 60
-            claim_rem = claim_rem * 60
-        times.append(roll_mod)
-        times.append(claim_mod)
-        times.append((int(time.time()) + roll_rem) % roll_mod)
-        times.append((int(time.time()) + claim_rem) % claim_mod)
-        return times
+            roll_mod *= 60
+            claim_mod *= 60
+            roll_rem *= 60
+            claim_rem *= 60
+        timing_data.append(roll_mod)
+        timing_data.append(claim_mod)
+        timing_data.append((int(time.time()) + roll_rem) % roll_mod)
+        timing_data.append((int(time.time()) + claim_rem) % claim_mod)
