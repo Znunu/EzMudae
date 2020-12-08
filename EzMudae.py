@@ -455,7 +455,7 @@ def get_timing(roll_mod: int, claim_mod: int, roll_rem: int, claim_rem: int, in_
 def _split_timing(timing: int) -> tuple[int]:
     mask = (1 << BIT_SIZE + 1) - 1
     nums = []
-    for n in range(4):
-        nums[n] = timing & mask
-        timing <<= BIT_SIZE
+    for _ in range(4):
+        nums.append(timing & mask)
+        timing >>= BIT_SIZE
     return tuple(nums)
