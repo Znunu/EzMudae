@@ -177,6 +177,13 @@ class Mudae:
                 self.kakera = int(match.group(2))
                 self.type = self.Type.roll
                 self.is_roll = True
+            else:
+                # Try to match to a roll without kakera
+                match = re.search(r"^(.*?)$", desc, re.DOTALL)
+                if match:
+                    self.series = match.group(1).replace("\n", " ")
+                    self.type = self.Type.roll
+                    self.is_roll = True
 
             # Try to match to infos:
             match = re.search(r"""^(.*)                #From the start of the string, series captured
