@@ -2,11 +2,262 @@ import enum
 import asyncio
 import time
 import re
-import sys
-import pvars
 
-pvars = pvars.get_context(file_format=pvars.Format.JSON)
-timing_data = pvars.make_var(None, lambda: timing_data)
+BIT_SIZE = 16
+MUDA = 432610292342587392
+
+class Waifu:
+    """
+    Represents a waifu from mudae.
+
+    A lot of the attributes will often be null since they either:
+        a. Are not applicable
+        b. Can't be read from the waifu message
+        c. Need to be fetched with the methods
+    Attributes
+    ----------
+    mudae: discord.User
+        The mudae bot that created this waifu.
+    user: discord.Client
+        The client that's using this waifu.
+    message: discord.Message
+        The waifu message the waifu came from.
+    owner: discord.Member
+        The member whose harem the waifu belongs to.
+    creator: discord.Member
+        The member that rolled this waifu.
+    suitors: list[discord.Member]
+        A list of members who wished the waifu.
+    name: str
+        The name of the waifu.
+    series: str
+        The series the waifu belongs to.
+    kakera: int
+        The kakera value of the waifu.
+    key: int
+        The key level of the waifu.
+    claims: int
+        The claims rank of the waifu.
+    likes: int
+        The likes rank of the waifu
+    type: Waifu.Type
+        The type of the waifu.
+    image: str
+        URL of the image, that the waifu message had, when the object was created.
+    image_count: int
+        How many images the waifu has available in total.
+    image_index: int
+        Image index of the image attribute with respect to the avaliable images.
+    image_extra: int
+        How many extra images have been added to the waifu.
+    is_claimed: bool
+        If the waifu has been claimed yet.
+    is_roll: bool
+        If the waifu is a roll.
+    is_girl: bool
+        If the waifu is female or both female and male.
+    Methods
+    -------
+    async fetch_extra()
+        Fills the suitor and creator attributes.
+    async await_claim()
+        Waits for a member to claim this waifu, then returns with that member.
+    """
+
+    class Type(enum.Enum):
+        """
+        Represents the different types of waifus.
+        Enums
+        -----
+        roll: 0
+            The waifu was rolled e.g. created with $w.
+        info: 1
+            The waifu came from the info command e.g. created with $im.
+        """
+
+        roll = enum.auto()
+        info = enum.auto()
+
+    def __init__(self, mudae, user, message):
+        self.mudae = mudae
+        self.message = message
+        self.user = user
+        self.suitors = []
+        self.name = None
+        self.series = None
+        self.kakera = None
+        self.key = None
+        self.claims = None
+        self.likes = None
+        self.owner = None
+        self.image = None
+        self.creator = None
+        self.image_count = None
+        self.image_index = None
+        self.image_extra = None
+        self.type = None
+        # self.ka_react = None
+        # self.is_claimed, self.is_girl and self.is_roll won't be initialized to avoid them being accidentally interpreted as False
+
+        # Message is missing parts to match against and can't be a match
+        if message.author != self.mudae or not len(message.embeds) == 1 or message.embeds[0].image.url == message.embeds[0].Empty:
+            raise TypeError("Message passed to the Waifu constructor it not a valid mudae message")
+
+        embed = message.embeds[0]
+        desc = embed.description + "\n"
+        self.name = embed.author.name
+        self.image = embed.image.url
+
+        def match_n_replace(pattern: str, string: str):
+            match = re.search(pattern, desc, re.DOTALL)
+            if match:
+                string = string.replace(match.group(0), "", 1)
+                match = match.group(1).replace("\n", " ").strip()
+            return match, string
+
+        # Extract series
+        # language=RegExp
+        self.series, desc = match_n_replace(r"^([^<\n]*)\n?", desc)
+
+        # Extract kakera
+        # language=RegExp
+        self.kakera, desc = match_n_replace(r"\*\*(\d+?)\*\*<.*>\n", desc)
+        self.kakera = int(self.kakera)
+
+        if self.series:
+            self.type = self.Type.roll
+            self.is_roll = True
+
+        # Try to match to infos:
+        match = re.search(r"""^(.*)                #From the start of the string, series captured
+                               \ <:(.+?):\d+?>.*?     #First emoji, gender captured
+                               \*\*(\d*)              #Kakera Value captured
+                               [^(]*                  #Consume until "claim", but stop if hit bracket, to allow key to be captured
+                               (?:\((\d*)\))?.*       #Optionally capture key value
+                               Claims:\ \#(\d*).*?    #Claims captured
+                               Likes:\ \#(\d*)        #Likes captured
+                               """, desc, re.DOTALL | re.VERBOSE)
+        if match:
+            self.series = match.group(1).replace("\n", " ")
+            if match.group(2) == "female":
+                self.is_girl = True
+            else:
+                self.is_girl = False
+            self.kakera = int(match.group(3))
+            if match.group(4):
+                self.key = int(match.group(4))
+            else:
+                self.key = 0
+            self.claims = int(match.group(5))
+            self.likes = int(match.group(6))
+            self.type = self.Type.info
+            self.is_roll = False
+
+        # Did it match?
+        if not self.series:
+            raise TypeError("Message passed to the Waifu constructor it not a valid mudae message")
+
+        # Try to match footer:
+        if not embed.footer.text:
+            self.is_claimed = False
+        else:
+            match = re.search(r"""(?:Belongs\ to\ (.+?))? #Optionally capture owner
+                                   (?:\ ~~\ )?               #Optionally match separator
+                                   (?:                       #----> Optionally capture image data
+                                       (\d+?)                    #Capture first index
+                                       \ /\ (\d+)                #Capture second index
+                                       (?:\ \[(\d+?)\])?         #Optionally capture third index
+                                   )?$                       #<----- end of string
+                                   """, embed.footer.text, re.VERBOSE | re.DOTALL)
+            if match.group(1):
+                self.owner = message.guild.get_member_named(match.group(1))
+                self.is_claimed = True
+            else:
+                self.is_claimed = False
+            if match.group(2):
+                self.image_index = int(match.group(2))
+            if match.group(3):
+                self.image_count = int(match.group(3))
+            if match.group(4):
+                self.image_extra = int(match.group(4))
+            else:
+                self.image_extra = 0
+
+    async def fetch_extra(self):
+        """
+        Fills the suitor and creator attributes.
+        The suitor and creator attributes are by default empty and null respectively. To get the real values, this method must be called.
+        The method will only work for waifus of type roll and only if the waifu was just rolled.
+        """
+
+        state = 0
+        async for message in self.message.channel.history(limit=10):
+            if state == 0:
+                if message.id == self.message.id:
+                    state = 1
+            elif state == 1:
+                state += 1
+                if message.author != self.mudae:
+                    self.creator = message.author
+                    break
+                elif "wished" in message.content.lower():
+                    self.suitors = message.mentions
+            elif state == 5:
+                break
+            else:
+                state += 1
+                if message.author != self.mudae:
+                    self.creator = message.author
+                    break
+
+        # await asyncio.sleep(1)
+        # UNTESTED ------------------->
+        """
+        self.message = await self.message.channel.fetch_message(self.message_id)
+        if self.is_claimed and self.is_roll:
+            for react in self.message.reactions:
+                name = react.emoji.name
+                if "kakera" in name:
+                    name = name.replace("kakera", "")
+                    if name == "":
+                        name = "K"
+                    self.ka_react = name
+                    break
+        """
+
+    async def await_claim(self):
+        """
+        Waits for a member to claim this waifu, then returns with that member.
+        If the waifu has already been claimed, the owner is returned immediately.
+        If the waifu doesn't have an owner, the function will wait for up to 60s for someone to claim.
+        Returns none if after 60s no one has claimed.
+        Returns
+        -------
+        Waifu
+            The waifu has an owner or one is found.
+        None
+            No owner could be found, the waifu wasn't claimed within 60s.
+        """
+
+        if self.is_claimed:
+            return self.owner
+
+        def check(message):
+            return message.author == self.mudae and self.name in message.content and "are now married" in message.content.lower()
+
+        try:
+            message = await self.user.wait_for("message", timeout=60, check=check)
+            user_name = message.content.split("**")[1]
+            self.owner = message.guild.get_member_named(user_name)
+            self.is_claimed = True
+            return self.owner
+
+        except asyncio.TimeoutError:
+            return None
+
+
+    def __str__(self):
+        return self.name
 
 
 class Mudae:
@@ -14,13 +265,14 @@ class Mudae:
     Represents a mudae bot. Primarily used as a factory for Waifu objects.
     Before doing anything with this class, make sure you've configured your mudae bot properly.
     Kakera value must be visible on rolls, for this class to be able to read the messages from mudae.
-    If you want to check for claim or roll resets, you must have used the set_timing method at least once
+    If you want to check for claim or roll resets, you must provide the optional timing parameter
     ----------
     mudae: discord.User
-        The mudea bot that this object belongs to.
-        This is usually the mudamaid if you got one, and if not, the classic mudae bot.
+        The mudea bot.
     user: discord.Client
         The client that's using this class.
+    has_timing: bool
+        If the module was created
     Methods
     -------
     waifu_from(message)
@@ -35,286 +287,31 @@ class Mudae:
          Pauses until next roll reset.
     async wait_claim()
          Pauses until next claim reset.
-    static set_timing(roll_mod, claim_mod, roll_rem, claim_rem, in_seconds)
-        Static method that configures roll resets
     """
 
-    def __init__(self, user, mudae):
+    def __init__(self, user, timing: int=None):
         """
         Parameters
         ----------
-        mudae: discord.User
-            The mudea bot that this object belongs to.
-            This is usually the mudamaid if you got one, and if not, the classic mudae bot.
         user: discord.Client
             The client that's using this class.
+        timing: int
+            Value encoded with information on claim and roll resets. Use the get_timing method to create one.
         """
 
-        self.mudae = mudae
         self.user = user
+        self.mudae = user.get_user(MUDA)
 
-        if timing_data:
-            self._roll_mod = timing_data[0]
-            self._claim_mod = timing_data[1]
-            self._roll_rem = timing_data[2]
-            self._claim_rem = timing_data[3]
-            self._timing = timing_data
-            self._has_timing = True
+        if timing:
+            timings = _split_timing(timing)
+            self._roll_mod = timings[0]
+            self._claim_mod = timings[1]
+            self._roll_rem = timings[2]
+            self._claim_rem = timings[3]
+            self.has_timing = True
         else:
-            self._has_timing = False
-            sys.stderr.write("Timing has not been set\n")
+            self.has_timing = False
 
-    class Waifu:
-        """
-        Represents a waifu from mudae.
-
-        A lot of the attributes will often be null since they either:
-            a. Are not applicable
-            b. Can't be read from the waifu message
-            c. Need to be fetched with the methods
-        Attributes
-        ----------
-        mudae: discord.User
-            The mudae bot that created this waifu.
-        user: discord.Client
-            The client that's using this waifu.
-        message: discord.Message
-            The waifu message the waifu came from.
-        owner: discord.Member
-            The member whose harem the waifu belongs to.
-        creator: discord.Member
-            The member that rolled this waifu.
-        suitors: list[discord.Member]
-            A list of members who wished the waifu.
-        name: str
-            The name of the waifu.
-        series: str
-            The series the waifu belongs to.
-        kakera: int
-            The kakera value of the waifu.
-        key: int
-            The key level of the waifu.
-        claims: int
-            The claims rank of the waifu.
-        likes: int
-            The likes rank of the waifu
-        type: Mudae.Waifu.Type
-            The type of the waifu.
-        image: str
-            URL of the image, that the waifu message had, when the object was created.
-        image_count: int
-            How many images the waifu has available in total.
-        image_index: int
-            Image index of the image attribute with respect to the avaliable images.
-        image_extra: int
-            How many extra images have been added to the waifu.
-        is_claimed: bool
-            If the waifu has been claimed yet.
-        is_roll: bool
-            If the waifu is a roll.
-        is_girl: bool
-            If the waifu is female or both female and male.
-        Methods
-        -------
-        async fetch_extra()
-            Fills the suitor and creator attributes.
-        async await_claim()
-            Waits for a member to claim this waifu, then returns with that member.
-        """
-
-        class Type(enum.Enum):
-            """
-            Represents the different types of waifus.
-            Enums
-            -----
-            roll: 0
-                The waifu was rolled e.g. created with $w.
-            info: 1
-                The waifu came from the info command e.g. created with $im.
-            """
-
-            roll = enum.auto()
-            info = enum.auto()
-
-        # Should not be called directly
-        def __init__(self, mudae, user, message):
-            self.mudae = mudae
-            self.message = message
-            self.user = user
-            self.suitors = []
-            self.name = None
-            self.series = None
-            self.kakera = None
-            self.key = None
-            self.claims = None
-            self.likes = None
-            self.owner = None
-            self.image = None
-            self.creator = None
-            self.image_count = None
-            self.image_index = None
-            self.image_extra = None
-            self.type = None
-            # self.ka_react = None
-            # self.is_claimed, self.is_girl and self.is_roll won't be initialized to avoid them being accidentally interpreted as False
-
-            # Message is missing parts to match against and can't be a match
-            if message.author != self.mudae or not len(message.embeds) == 1 or message.embeds[0].image.url == message.embeds[0].Empty:
-                raise TypeError("Message passed to the Waifu constructor it not a valid mudae message")
-
-            embed = message.embeds[0]
-            desc = embed.description
-            self.name = embed.author.name
-            self.image = embed.image.url
-
-            # Try to match to roll:
-            match = re.search(r"""^(.*?)      #From start of string, series captured
-                                \n\*\*(\d+?)  #Kakera value captured
-                                \*\*<.*>$     #Match a single emoji, end of string
-                                """, desc, re.DOTALL | re.VERBOSE)
-            if match:
-                self.series = match.group(1).replace("\n", " ")
-                self.kakera = int(match.group(2))
-                self.type = self.Type.roll
-                self.is_roll = True
-            else:
-                # Try to match to a roll without kakera
-                match = re.search(r"^(.*?)$", desc, re.DOTALL)
-                if match:
-                    self.series = match.group(1).replace("\n", " ")
-                    self.type = self.Type.roll
-                    self.is_roll = True
-
-            # Try to match to infos:
-            match = re.search(r"""^(.*)                #From the start of the string, series captured
-                                \ <:(.+?):\d+?>.*?     #First emoji, gender captured
-                                \*\*(\d*)              #Kakera Value captured
-                                [^(]*                  #Consume until "claim", but stop if hit bracket, to allow key to be captured
-                                (?:\((\d*)\))?.*       #Optionally capture key value
-                                Claims:\ \#(\d*).*?    #Claims captured
-                                Likes:\ \#(\d*)        #Likes captured
-                                """, desc, re.DOTALL | re.VERBOSE)
-            if match:
-                self.series = match.group(1).replace("\n", " ")
-                if match.group(2) == "female":
-                    self.is_girl = True
-                else:
-                    self.is_girl = False
-                self.kakera = int(match.group(3))
-                if match.group(4):
-                    self.key = int(match.group(4))
-                else:
-                    self.key = 0
-                self.claims = int(match.group(5))
-                self.likes = int(match.group(6))
-                self.type = self.Type.info
-                self.is_roll = False
-
-            # Did it match?
-            if not self.series:
-                raise TypeError("Message passed to the Waifu constructor it not a valid mudae message")
-
-            # Try to match footer:
-            if not embed.footer.text:
-                self.is_claimed = False
-            else:
-                match = re.search(r"""(?:Belongs\ to\ (.+?))? #Optionally capture owner
-                                    (?:\ ~~\ )?               #Optionally match separator
-                                    (?:                       #----> Optionally capture image data
-                                        (\d+?)                    #Capture first index
-                                        \ /\ (\d+)                #Capture second index
-                                        (?:\ \[(\d+?)\])?         #Optionally capture third index
-                                    )?$                       #<----- end of string
-                                    """, embed.footer.text, re.VERBOSE | re.DOTALL)
-                if match.group(1):
-                    self.owner = message.guild.get_member_named(match.group(1))
-                    self.is_claimed = True
-                else:
-                    self.is_claimed = False
-                if match.group(2):
-                    self.image_index = int(match.group(2))
-                if match.group(3):
-                    self.image_count = int(match.group(3))
-                if match.group(4):
-                    self.image_extra = int(match.group(4))
-                else:
-                    self.image_extra = 0
-
-        # Should not be called directly
-        def __str__(self):
-            return self.name
-
-        async def fetch_extra(self):
-            """
-            Fills the suitor and creator attributes.
-            The suitor and creator attributes are by default empty and null respectively. To get the real values, this method must be called.
-            The method will only work for waifus of type roll and only if the waifu was just rolled.
-            """
-
-            state = 0
-            async for message in self.message.channel.history(limit=10):
-                if state == 0:
-                    if message.id == self.message.id:
-                        state = 1
-                elif state == 1:
-                    state += 1
-                    if message.author != self.mudae:
-                        self.creator = message.author
-                        break
-                    elif "wished" in message.content.lower():
-                        self.suitors = message.mentions
-                elif state == 5:
-                    break
-                else:
-                    state += 1
-                    if message.author != self.mudae:
-                        self.creator = message.author
-                        break
-
-            # await asyncio.sleep(1)
-            # UNTESTED ------------------->
-            """
-            self.message = await self.message.channel.fetch_message(self.message_id)
-            if self.is_claimed and self.is_roll:
-                for react in self.message.reactions:
-                    name = react.emoji.name
-                    if "kakera" in name:
-                        name = name.replace("kakera", "")
-                        if name == "":
-                            name = "K"
-                        self.ka_react = name
-                        break
-            """
-
-        async def await_claim(self):
-            """
-            Waits for a member to claim this waifu, then returns with that member.
-            If the waifu has already been claimed, the owner is returned immediately.
-            If the waifu doesn't have an owner, the function will wait for up to 60s for someone to claim.
-            Returns none if after 60s no one has claimed.
-            Returns
-            -------
-            Mudae.Waifu
-                The waifu has an owner or one is found.
-            None
-                No owner could be found, the waifu wasn't claimed within 60s.
-            """
-
-            if self.is_claimed:
-                return self.owner
-
-            def check(message):
-                return message.author == self.mudae and self.name in message.content and "are now married" in message.content.lower()
-
-            try:
-                message = await self.user.wait_for("message", timeout=60, check=check)
-                user_name = message.content.split("**")[1]
-                self.owner = message.guild.get_member_named(user_name)
-                self.is_claimed = True
-                return self.owner
-
-            except asyncio.TimeoutError:
-                return None
 
     def waifu_from(self, message):
         """
@@ -327,18 +324,18 @@ class Mudae:
             A discord message from mudae with a waifu (a waifu message).
         Returns
         -------
-        Mudae.Waifu
+        Waifu
             A waifu created from the message.
         None
             The message isn't valid.
         """
 
         try:
-            return self.Waifu(self.mudae, self.user, message)
+            return Waifu(self.mudae, self.user, message)
         except TypeError:
             return None
 
-    def from_wish(self, message, wishes, check_name=True, check_series=False):
+    def from_wish(self, message, wishes: list[str], check_name: bool=True, check_series: bool=False):
         """
         Checks if the waifu from a waifu message is part of a list of wishes.
         If both check_name and check_series are true, the wishes will be checked against both name and series.
@@ -368,7 +365,7 @@ class Mudae:
             return waifu
         return False
 
-    def until_roll(self, in_seconds=False):
+    def until_roll(self, in_seconds: bool=False):
         """
         Returns how much time there's left until the next roll reset.
         Parameters
@@ -381,8 +378,8 @@ class Mudae:
             The time left until next roll reset.
         """
 
-        if not self._timing:
-            raise TypeError("Missing timing list")
+        if not self.has_timing:
+            raise TypeError("Missing cool-down data")
         left = self._roll_rem - (int(time.time()) % self._roll_mod)
         if left < 0:
             left += self._roll_mod
@@ -390,7 +387,7 @@ class Mudae:
             left = int(left / 60)
         return left
 
-    def until_claim(self, in_seconds=False):
+    def until_claim(self, in_seconds: bool=False):
         """
         Returns how much time there's left until the next claim reset.
         Parameters
@@ -403,8 +400,8 @@ class Mudae:
             The time left until next claim reset.
         """
 
-        if not self._timing:
-            raise TypeError("Missing timing list")
+        if not self.has_timing:
+            raise TypeError("Missing cool-down data")
         left = self._claim_rem - (int(time.time()) % self._claim_mod)
         if left < 0:
             left += self._claim_mod
@@ -428,32 +425,37 @@ class Mudae:
         await asyncio.sleep(5)
         await asyncio.sleep(self.until_claim(True))
 
-    @staticmethod
-    def set_timing(roll_mod, claim_mod, roll_rem, claim_rem, in_seconds=False):
-        """
-        A static method that persistently sets timing for roll resets for the class
-        Parameters
-        ----------
-        roll_mod: int
-            The time period, between roll resets. The default mudae value for this is 60 min.
-        claim_mod: int
-            The time period, between claim resets. The default mudae value for this is 120 min.
-        roll_rem: int
-            The time period, from now until the next roll reset.
-        claim_rem: int
-            The time period, from now until the next claim reset.
-        in_seconds: bool
-            If the time periods are given as seconds or minutes.
-        """
 
-        global timing_data
-        timing_data = []
-        if not in_seconds:
-            roll_mod *= 60
-            claim_mod *= 60
-            roll_rem *= 60
-            claim_rem *= 60
-        timing_data.append(roll_mod)
-        timing_data.append(claim_mod)
-        timing_data.append((int(time.time()) + roll_rem) % roll_mod)
-        timing_data.append((int(time.time()) + claim_rem) % claim_mod)
+def get_timing(roll_mod: int, claim_mod: int, roll_rem: int, claim_rem: int, in_seconds=False) -> int:
+    """
+     A static method that returns an integer from the supplied parameters.
+     The integer may be provided to the Mudae constructor to enable roll and claim cool-down functionality
+     Parameters
+     ----------
+     roll_mod: int
+         The time period, between roll resets. The default mudae value for this is 60 min.
+     claim_mod: int
+         The time period, between claim resets. The default mudae value for this is 120 min.
+     roll_rem: int
+         The time period, from now until the next roll reset.
+     claim_rem: int
+         The time period, from now until the next claim reset.
+     in_seconds: bool
+         If the time periods are given as seconds or minutes.
+     """
+
+    timings = 0
+    for value in (roll_mod, claim_mod, roll_rem, claim_rem):
+        if in_seconds: value *= 60
+        timings <<= BIT_SIZE
+        timings += value
+    return timings
+
+
+def _split_timing(timing: int) -> tuple[int]:
+    mask = (1 << BIT_SIZE + 1) - 1
+    nums = []
+    for n in range(4):
+        nums[n] = timing & mask
+        timing <<= BIT_SIZE
+    return tuple(nums)
