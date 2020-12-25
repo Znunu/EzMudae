@@ -1,6 +1,8 @@
+from __future__ import annotations
 import enum
 import asyncio
 import time
+import argparse
 import re
 
 BIT_SIZE = 16
@@ -379,7 +381,7 @@ class Mudae:
         """
 
         if not self.has_timing:
-            raise TypeError("Missing cool-down data")
+            raise TypeError("Missing cooldown data")
         left = self._roll_rem - (int(time.time()) % self._roll_mod)
         if left < 0:
             left += self._roll_mod
@@ -401,7 +403,7 @@ class Mudae:
         """
 
         if not self.has_timing:
-            raise TypeError("Missing cool-down data")
+            raise TypeError("Missing cooldown data")
         left = self._claim_rem - (int(time.time()) % self._claim_mod)
         if left < 0:
             left += self._claim_mod
@@ -444,9 +446,16 @@ def get_timing(roll_mod: int, claim_mod: int, roll_rem: int, claim_rem: int, in_
          If the time periods are given as seconds or minutes.
      """
 
+    if not in_seconds:
+        roll_mod *= 60
+        claim_mod *= 60
+        roll_rem *= 60
+        claim_rem *= 60
+
     timings = 0
+    roll_rem = (int(time.time()) + roll_rem) % roll_mod
+    claim_rem = (int(time.time()) + claim_rem) % claim_mod
     for value in (roll_mod, claim_mod, roll_rem, claim_rem):
-        if in_seconds: value *= 60
         timings <<= BIT_SIZE
         timings += value
     return timings
@@ -459,3 +468,13 @@ def _split_timing(timing: int) -> tuple[int]:
         nums.append(timing & mask)
         timing >>= BIT_SIZE
     return tuple(nums)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--rr", type=int, help="Time until next roll reset", required=True)
+    parser.add_argument("--cr", type=int, help="Time until next claim reset", required=True)
+    parser.add_argument("--rm", type=int, help="Time period between each roll reset (Defaults to 60)", default=60)
+    parser.add_argument("--cm", type=int, help="Time period between each claim reset (Defaults to 180)", default=180)
+    args = parser.parse_args()
+    print(get_timing(args.rm, args.cm, args.rr, args.cr))
