@@ -1,7 +1,7 @@
 # EzMudae
 Module for Discord.py that parses messages and handling claim/roll resets from the Mudae bot. Will only work, if you've enabled visble kakera value on your rolls. 
 
-Documentation can be found inside ./docs/index.html, every function is extensively documented. Join [my discord server](https://discord.gg/kw6PCBaW5y) for help. This repo is for someone experienced with python programming and discord.py. If you aren't, and just need a (user/self)bot to cheat with, check out [my other repo](https://github.com/Znunu/Mudae-Cheat).
+Documentation is [here](https://git.orz.cx/EzMudae/), every function is extensively documented. Join [my discord server](https://discord.gg/kw6PCBaW5y) for help. This repo is for someone experienced with python programming and discord.py. If you aren't, and just need a (user/self)bot to cheat with, check out [my other repo](https://github.com/Znunu/Mudae-Cheat).
 
 ### Getting the name, series and kakera value from a waifu
 ```python
