@@ -291,7 +291,7 @@ class Mudae:
          Pauses until next claim reset.
     """
 
-    def __init__(self, user, timing: int=None):
+    def __init__(self, user, timing: tuple[int,...]=None):
         """
         Parameters
         ----------
@@ -305,7 +305,8 @@ class Mudae:
         self.mudae = user.get_user(MUDA)
 
         if timing:
-            timings = _split_timing(timing)
+            # timings = _split_timing(timing)
+            timings = timing
             self._roll_mod = timings[0]
             self._claim_mod = timings[1]
             self._roll_rem = timings[2]
@@ -313,7 +314,6 @@ class Mudae:
             self.has_timing = True
         else:
             self.has_timing = False
-
 
     def waifu_from(self, message):
         """
@@ -428,7 +428,7 @@ class Mudae:
         await asyncio.sleep(self.until_claim(True))
 
 
-def get_timing(roll_mod: int, claim_mod: int, roll_rem: int, claim_rem: int, in_seconds=False) -> int:
+def get_timing(roll_mod: int, claim_mod: int, roll_rem: int, claim_rem: int, in_seconds=False) -> tuple[int,...]:
     """
      A static method that returns an integer from the supplied parameters.
      The integer may be provided to the Mudae constructor to enable roll and claim cool-down functionality
@@ -455,13 +455,15 @@ def get_timing(roll_mod: int, claim_mod: int, roll_rem: int, claim_rem: int, in_
     timings = 0
     roll_rem = (int(time.time()) + roll_rem) % roll_mod
     claim_rem = (int(time.time()) + claim_rem) % claim_mod
-    for value in (roll_mod, claim_mod, roll_rem, claim_rem):
-        timings <<= BIT_SIZE
-        timings += value
-    return timings
+    all_vals = (roll_mod, claim_mod, roll_rem, claim_rem)
+    #for value in reversed(all_vals):
+    #    timings <<= BIT_SIZE
+    #    timings += value
+    #return timings
+    return all_vals
 
 
-def _split_timing(timing: int) -> tuple[int]:
+def _split_timing(timing: int) -> tuple[int,...]:
     mask = (1 << BIT_SIZE + 1) - 1
     nums = []
     for _ in range(4):
