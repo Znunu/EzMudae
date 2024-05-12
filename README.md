@@ -12,12 +12,11 @@ Copy the ezmudae.py file into your project folder
 from EzMudae import Mudae
 
 bot     #A discord.py client
-mudae   #Discord.py member representing the mudae bot
 
 async def on_message(message)
 
       # Creates a new Mudae object
-      mudae_wrap = Mudae(bot, mudae)
+      mudae_wrap = Mudae(bot)
 
       # Parses the message and returns the waifu object
       waifu = mudae_wrap.waifu_from(message)
