@@ -102,7 +102,7 @@ class Waifu:
         # self.is_claimed, self.is_girl and self.is_roll won't be initialized to avoid them being accidentally interpreted as False
 
         # Message is missing parts to match against and can't be a match
-        if message.author != self.mudae or not len(message.embeds) == 1 or message.embeds[0].image.url == message.embeds[0].Empty:
+        if message.author != self.mudae or not len(message.embeds) == 1 or message.embeds[0].image is None:
             raise TypeError("Message passed to the Waifu constructor it not a valid mudae message")
 
         embed = message.embeds[0]
@@ -131,7 +131,7 @@ class Waifu:
             self.is_roll = True
 
         # Try to match to infos:
-        match = re.search(r"""^(.*)                #From the start of the string, series captured
+        match = re.search(r"""^(.*)             #From the start of the string, series captured
                                \ <:(.+?):\d+?>.*?     #First emoji, gender captured
                                \*\*(\d*)              #Kakera Value captured
                                [^(]*                  #Consume until "claim", but stop if hit bracket, to allow key to be captured
