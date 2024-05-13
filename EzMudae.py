@@ -54,8 +54,6 @@ class Waifu:
         How many extra images have been added to the waifu.
     is_claimed: bool
         If the waifu has been claimed yet.
-    is_roll: bool
-        If the waifu is a roll.
     is_girl: bool
         If the waifu is female or both female and male.
     Methods
@@ -128,7 +126,6 @@ class Waifu:
 
         if self.series:
             self.type = self.Type.roll
-            self.is_roll = True
 
         # Try to match to infos:
         match = re.search(r"""^(.*)             #From the start of the string, series captured
@@ -153,7 +150,6 @@ class Waifu:
             self.claims = int(match.group(5))
             self.likes = int(match.group(6))
             self.type = self.Type.info
-            self.is_roll = False
 
         # Did it match?
         if not self.series:
@@ -291,7 +287,7 @@ class Mudae:
          Pauses until next claim reset.
     """
 
-    def __init__(self, user, timing: tuple[int,...]=None):
+    def __init__(self, user, timing: int=None):
         """
         Parameters
         ----------
@@ -305,8 +301,7 @@ class Mudae:
         self.mudae = user.get_user(MUDA)
 
         if timing:
-            # timings = _split_timing(timing)
-            timings = timing
+            timings = _split_timing(timing)
             self._roll_mod = timings[0]
             self._claim_mod = timings[1]
             self._roll_rem = timings[2]
@@ -332,10 +327,7 @@ class Mudae:
             The message isn't valid.
         """
 
-        try:
-            return Waifu(self.mudae, self.user, message)
-        except TypeError:
-            return None
+        return Waifu(self.mudae, self.user, message)
 
     def from_wish(self, message, wishes: list[str], check_name: bool=True, check_series: bool=False):
         """
@@ -428,7 +420,7 @@ class Mudae:
         await asyncio.sleep(self.until_claim(True))
 
 
-def get_timing(roll_mod: int, claim_mod: int, roll_rem: int, claim_rem: int, in_seconds=False) -> tuple[int,...]:
+def get_timing(roll_mod: int, claim_mod: int, roll_rem: int, claim_rem: int, in_seconds=False) -> int:
     """
      A static method that returns an integer from the supplied parameters.
      The integer may be provided to the Mudae constructor to enable roll and claim cool-down functionality
@@ -456,15 +448,14 @@ def get_timing(roll_mod: int, claim_mod: int, roll_rem: int, claim_rem: int, in_
     roll_rem = (int(time.time()) + roll_rem) % roll_mod
     claim_rem = (int(time.time()) + claim_rem) % claim_mod
     all_vals = (roll_mod, claim_mod, roll_rem, claim_rem)
-    #for value in reversed(all_vals):
-    #    timings <<= BIT_SIZE
-    #    timings += value
-    #return timings
-    return all_vals
+    for value in reversed(all_vals):
+        timings <<= BIT_SIZE
+        timings += value
+    return timings
 
 
 def _split_timing(timing: int) -> tuple[int,...]:
-    mask = (1 << BIT_SIZE + 1) - 1
+    mask = (1 << BIT_SIZE) - 1
     nums = []
     for _ in range(4):
         nums.append(timing & mask)
