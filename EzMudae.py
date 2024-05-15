@@ -3,8 +3,6 @@ import enum
 import asyncio
 import time
 import argparse
-import re
-
 import parse
 
 BIT_SIZE = 16
