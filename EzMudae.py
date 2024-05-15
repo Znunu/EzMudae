@@ -5,8 +5,14 @@ import time
 import argparse
 import re
 
+import parse
+
 BIT_SIZE = 16
 MUDA = 432610292342587392
+EMOJI_FEMALE = "<:female:452463537508450304>"
+EMOJI_MALE = "<:male:452470164529872899>"
+EMOJI_KAKERA = "<:kakera:469835869059153940>"
+
 
 class Waifu:
     """
@@ -78,112 +84,81 @@ class Waifu:
         roll = enum.auto()
         info = enum.auto()
 
+
+    class Gender(enum.Enum):
+        """
+        Represents the different genders of waifus.
+        Enums
+        -----
+        female: 0
+            The waifu is female.
+        male: 1
+            The waifu is male.
+        """
+
+        female = enum.auto()
+        male = enum.auto()
+
     def __init__(self, mudae, user, message):
         self.mudae = mudae
         self.message = message
         self.user = user
-        self.suitors = []
-        self.name = None
-        self.series = None
-        self.kakera = None
-        self.key = None
-        self.claims = None
-        self.likes = None
-        self.owner = None
-        self.image = None
-        self.creator = None
-        self.image_count = None
-        self.image_index = None
-        self.image_extra = None
+        self.suitors = []  # Needs to be fetched with fetch_extra
+        self.name = None  # Name of the waifu, appears in the title of im and w
+        self.series = None  # Series the waifu belongs to, appears in the description of im and w
+        self.kakera = None  # Kakera value. Always appears in the description of w and optional in im
+        self.claims = None  # Claims rank, appears in the description of w
+        self.likes = None  # Likes rank, appears in the description of w
+        self.owner = None  # Optionally appears in the footer of im and w
+        self.image = None  # URL of the image, appears in im and w
+        self.creator = None  # Needs to be fetched with fetch_extra
+        self.gender = None  # Appears only in the description of im
         self.type = None
-        # self.ka_react = None
-        # self.is_claimed, self.is_girl and self.is_roll won't be initialized to avoid them being accidentally interpreted as False
 
         # Message is missing parts to match against and can't be a match
         if message.author != self.mudae or not len(message.embeds) == 1 or message.embeds[0].image is None:
             raise TypeError("Message passed to the Waifu constructor it not a valid mudae message")
 
         embed = message.embeds[0]
-        desc = embed.description + "\n"
+        desc = embed.description
+        lines = desc.split("\n")
         self.name = embed.author.name
         self.image = embed.image.url
 
-        def match_n_replace(pattern: str, string: str):
-            match = re.search(pattern, desc, re.DOTALL)
-            if match:
-                string = string.replace(match.group(0), "", 1)
-                match = match.group(1).replace("\n", " ").strip()
-            return match, string
+        first_line = lines[0]
+        if EMOJI_MALE in first_line:
+            self.gender = self.Gender.male
+            first_line = first_line.replace(EMOJI_MALE, "")
+        elif EMOJI_FEMALE in first_line:
+            self.gender = self.Gender.female
+            first_line = first_line.replace(EMOJI_FEMALE, "")
+        self.series = first_line.strip()
 
-        # Extract series
-        # language=RegExp
-        self.series, desc = match_n_replace(r"^([^<\n]*)\n?", desc)
-
-        # Extract kakera
-        # language=RegExp
-        self.kakera, desc = match_n_replace(r"\*\*(\d+?)\*\*<.*>\n", desc)
-        self.kakera = int(self.kakera)
-
-        if self.series:
+        if "React with any emoji to claim!" in lines:
             self.type = self.Type.roll
-
-        # Try to match to infos:
-        match = re.search(r"""^(.*)             #From the start of the string, series captured
-                               \ <:(.+?):\d+?>.*?     #First emoji, gender captured
-                               \*\*(\d*)              #Kakera Value captured
-                               [^(]*                  #Consume until "claim", but stop if hit bracket, to allow key to be captured
-                               (?:\((\d*)\))?.*       #Optionally capture key value
-                               Claims:\ \#(\d*).*?    #Claims captured
-                               Likes:\ \#(\d*)        #Likes captured
-                               """, desc, re.DOTALL | re.VERBOSE)
-        if match:
-            self.series = match.group(1).replace("\n", " ")
-            if match.group(2) == "female":
-                self.is_girl = True
-            else:
-                self.is_girl = False
-            self.kakera = int(match.group(3))
-            if match.group(4):
-                self.key = int(match.group(4))
-            else:
-                self.key = 0
-            self.claims = int(match.group(5))
-            self.likes = int(match.group(6))
+        else:
             self.type = self.Type.info
 
-        # Did it match?
-        if not self.series:
-            raise TypeError("Message passed to the Waifu constructor it not a valid mudae message")
+        for line in lines:
+            if EMOJI_KAKERA in line:
+                self.kakera = parse.search("**{}**", line)[0]
+            elif "Claim Rank" in line:
+                self.claims = parse.search("Claim Rank: #{:d}", line)[0]
+            elif "Like Rank" in line:
+                self.likes = parse.search("Like Rank: #{:d}", line)[0]
 
-        # Try to match footer:
-        if not embed.footer.text:
-            self.is_claimed = False
-        else:
-            match = re.search(r"""(?:Belongs\ to\ (.+?))? #Optionally capture owner
-                                   (?:\ ~~\ )?               #Optionally match separator
-                                   (?:                       #----> Optionally capture image data
-                                       (\d+?)                    #Capture first index
-                                       \ /\ (\d+)                #Capture second index
-                                       (?:\ \[(\d+?)\])?         #Optionally capture third index
-                                   )?$                       #<----- end of string
-                                   """, embed.footer.text, re.VERBOSE | re.DOTALL)
-            if match.group(1):
-                self.owner = message.guild.get_member_named(match.group(1))
+        footer = embed.footer.text
+        if footer is not None:
+            match = parse.search("Belongs to {} ~~", footer)
+            if match is not None:
+                self.owner = match[0].strip()
                 self.is_claimed = True
             else:
                 self.is_claimed = False
-            if match.group(2):
-                self.image_index = int(match.group(2))
-            if match.group(3):
-                self.image_count = int(match.group(3))
-            if match.group(4):
-                self.image_extra = int(match.group(4))
-            else:
-                self.image_extra = 0
 
     async def fetch_extra(self):
         """
-        Fills the suitor and creator attributes.
+        Fills the suitor and creator attributes, by reading messages sent before and after the waifu.
         The suitor and creator attributes are by default empty and null respectively. To get the real values, this method must be called.
         The method will only work for waifus of type roll and only if the waifu was just rolled.
         """
@@ -253,7 +228,6 @@ class Waifu:
         except asyncio.TimeoutError:
             return None
 
-
     def __str__(self):
         return self.name
 
@@ -313,7 +287,7 @@ class Mudae:
     def waifu_from(self, message):
         """
         Returns a waifu from a message.
-        Currently two types of messages are supported, rolls and infoes. Rolls are usually created with the $w command, and infoes with the $im command.
+        Currently two types of messages are supported, rolls and infos. Rolls are usually created with the $w command, and infoes with the $im command.
         If the message supplied is none of the two valid types of messages, or is not valid for another reason, none is returned.
         Parameters
         ----------
