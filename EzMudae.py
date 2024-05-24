@@ -12,6 +12,13 @@ EMOJI_MALE = "<:male:452470164529872899>"
 EMOJI_KAKERA = "<:kakera:469835869059153940>"
 
 
+class WaifuTypeError(TypeError):
+    """
+    This is the exception to catch, if you're trying to parse every message as a waifu message
+    """
+    pass
+
+
 class Waifu:
     """
     Represents a waifu from mudae.
@@ -82,7 +89,6 @@ class Waifu:
         roll = enum.auto()
         info = enum.auto()
 
-
     class Gender(enum.Enum):
         """
         Represents the different genders of waifus.
@@ -115,7 +121,7 @@ class Waifu:
 
         # Message is missing parts to match against and can't be a match
         if message.author != self.mudae or not len(message.embeds) == 1 or message.embeds[0].image is None:
-            raise TypeError("Message passed to the Waifu constructor it not a valid mudae message")
+            raise WaifuTypeError("Message passed to the Waifu constructor it not a valid mudae message")
 
         embed = message.embeds[0]
         desc = embed.description
@@ -139,7 +145,7 @@ class Waifu:
 
         for line in lines:
             if EMOJI_KAKERA in line:
-                self.kakera = parse.search("**{}**", line)[0]
+                self.kakera = parse.search("**{}**", line.replace("+", ""))[0]
             elif "Claim Rank" in line:
                 self.claims = parse.search("Claim Rank: #{:d}", line)[0]
             elif "Like Rank" in line:
