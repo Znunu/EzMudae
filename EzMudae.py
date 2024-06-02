@@ -138,14 +138,14 @@ class Waifu:
             first_line = first_line.replace(EMOJI_FEMALE, "")
         self.series = first_line.strip()
 
-        if "React with any emoji to claim!" in lines:
+        if self.gender is None:
             self.type = self.Type.roll
         else:
             self.type = self.Type.info
 
         for line in lines:
             if EMOJI_KAKERA in line:
-                self.kakera = parse.search("**{}**", line.replace("+", ""))[0]
+                self.kakera = parse.search("**{:d}**", line.replace("+", ""))[0]
             elif "Claim Rank" in line:
                 self.claims = parse.search("Claim Rank: #{:d}", line)[0]
             elif "Like Rank" in line:
@@ -153,12 +153,16 @@ class Waifu:
 
         footer = embed.footer.text
         if footer is not None:
-            match = parse.search("Belongs to {} ~~", footer)
+            match = parse.parse("Belongs to {}", footer.split(" ~~")[0])
             if match is not None:
                 self.owner = match[0].strip()
                 self.is_claimed = True
             else:
                 self.is_claimed = False
+            match = parse.search("{:d} / {:d}", footer)
+            if match is not None and self.gender == self.Type.roll:
+                raise Exception("This waifu has multiple images but is also missing a gender. this shouldn't happen")
+
 
     async def fetch_extra(self):
         """
